@@ -131,8 +131,9 @@ def decode_map_features_from_proto(map_features):
             map_infos['speed_bump'].append(cur_info)
 
         else:
-            print(cur_data)
-            raise ValueError
+            # print(cur_data)
+            # raise ValueError
+            continue
 
         polylines.append(cur_polyline)
         cur_info['polyline_index'] = (point_cnt, point_cnt + len(cur_polyline))

@@ -287,7 +287,7 @@ class WaymoDataset(DatasetTemplate):
         ## generate the attributes for each object
         object_onehot_mask = torch.zeros((num_center_objects, num_objects, num_timestamps, 5))
         object_onehot_mask[:, obj_types == 'TYPE_VEHICLE', :, 0] = 1
-        object_onehot_mask[:, obj_types == 'TYPE_PEDESTRAIN', :, 1] = 1  # TODO: CHECK THIS TYPO
+        object_onehot_mask[:, obj_types == 'TYPE_PEDESTRIAN', :, 1] = 1  # TODO: CHECK THIS TYPO
         object_onehot_mask[:, obj_types == 'TYPE_CYCLIST', :, 2] = 1
         object_onehot_mask[torch.arange(num_center_objects), center_indices, :, 3] = 1
         object_onehot_mask[:, sdc_index, :, 4] = 1
@@ -548,5 +548,26 @@ if __name__ == '__main__':
         yaml_config = yaml.safe_load(open(args.cfg_file))
     dataset_cfg = EasyDict(yaml_config)
 
+    
+    ## for test
+    import datetime
+    
+    log_file = 'log/log_test_dataset_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    logger = common_utils.create_logger(log_file, rank=0)
+    
+    dataset = WaymoDataset(
+        dataset_cfg=dataset_cfg.DATA_CONFIG,
+        training=True,
+        logger=logger, 
+    )
+    
+    from torch.utils.data import DataLoader
 
+    dataloader = DataLoader(
+        dataset, batch_size=2, pin_memory=True, collate_fn=dataset.collate_batch,
+    )
+    
+    for data in dataloader:
+        b = len(data)
+        print(data)
 
