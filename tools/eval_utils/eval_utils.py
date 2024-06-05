@@ -12,6 +12,67 @@ import tqdm
 
 from mtr.utils import common_utils
 
+from pathlib import Path
+import matplotlib.pyplot as plt
+
+def visualize(batch_pred_dicts):
+    root_dir = Path("/home/nihua/code/auto/MTR/visualize/")
+    
+    root_dir.mkdir(parents=True, exist_ok=True)
+    pred_scores = batch_pred_dicts['pred_scores'].cpu().numpy()
+    pred_trajs = batch_pred_dicts['pred_trajs'].cpu().numpy()
+    
+    scenario_id = batch_pred_dicts['input_dict']['scenario_id']
+    obj_trajs = batch_pred_dicts['input_dict']['obj_trajs'].cpu().numpy()
+    obj_trajs_mask = batch_pred_dicts['input_dict']['obj_trajs_mask'].cpu().numpy()
+    obj_ids = batch_pred_dicts['input_dict']['obj_ids']
+    map_polylines = batch_pred_dicts['input_dict']['map_polylines'].cpu().numpy()
+    map_polylines_mask = batch_pred_dicts['input_dict']['map_polylines_mask'].cpu().numpy()
+    track_index_to_predict = batch_pred_dicts['input_dict']['track_index_to_predict'].cpu().numpy()
+    
+    batch_size = len(pred_scores)
+    for idx in range(batch_size):
+        file_name = root_dir / f"{scenario_id[idx]}_{obj_ids[idx]}.png"
+        cur_map_polylines = map_polylines[idx]
+        cur_map_polylines_mask = map_polylines_mask[idx]
+        cur_obj_trajs = obj_trajs[idx]
+        cur_obj_trajs_mask = obj_trajs_mask[idx]
+        center_obj_track_index = track_index_to_predict[idx]
+        plt.figure(figsize=(15,10))
+        plt.scatter([-10,30],[-20,20], marker='+')
+        plt.xlim(-10, 90)
+        plt.ylim(-30, 30)
+        for pl_idx, pl in enumerate(cur_map_polylines):
+            if cur_map_polylines_mask[pl_idx].sum() <= 0:
+                continue
+            pl_mask = cur_map_polylines_mask[pl_idx]
+            xs = pl[pl_mask][:,0]
+            ys = pl[pl_mask][:,1]
+            plt.plot(xs,ys, marker='.', color = 'gray')
+            
+        for traj_idx, traj in enumerate(cur_obj_trajs):
+            if traj_idx == center_obj_track_index:
+                continue
+            traj_mask = cur_obj_trajs_mask[traj_idx]
+            xs = traj[traj_mask][:,0]
+            ys = traj[traj_mask][:,1]
+            plt.plot(xs,ys, marker='.', color = 'yellow')
+
+        center_traj = cur_obj_trajs[center_obj_track_index]
+        center_traj_mask = cur_obj_trajs_mask[center_obj_track_index]
+        xs = center_traj[center_traj_mask][:,0]
+        ys = center_traj[center_traj_mask][:,1]
+        plt.plot(xs,ys, marker='.', color = 'blue') 
+        
+        cur_pred_trajs = pred_trajs[idx]
+        for pred_traj in cur_pred_trajs:
+            plt.plot(pred_traj[:,0],pred_traj[:,1], marker='.', color = 'red')
+            break
+        
+        plt.savefig(file_name)
+        plt.close()
+    
+    
 
 def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None, logger_iter_interval=50):
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -44,6 +105,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
             batch_pred_dicts = model(batch_dict)
             final_pred_dicts = dataset.generate_prediction_dicts(batch_pred_dicts, output_path=final_output_dir if save_to_file else None)
             pred_dicts += final_pred_dicts
+            # visualize(batch_pred_dicts)
 
         disp_dict = {}
 
