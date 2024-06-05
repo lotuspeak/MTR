@@ -201,7 +201,7 @@ def merge_results_dist(result_part, size, tmpdir):
     dist.barrier()
 
     if rank != 0:
-        return None
+        return []
 
     part_list = []
     for i in range(world_size):
