@@ -523,7 +523,7 @@ def multi_head_attention_forward(
     #
     # reshape q, k, v for multihead attention and make em batch first
     #
-    q = q.contiguous().view(tgt_len, bsz * num_heads, head_dim).transpose(0, 1)
+    q = q.contiguous().view(tgt_len, bsz * num_heads, head_dim).transpose(0, 1)     # (bsz * num_heads, tgt_len, head_dim)
     if static_k is None:
         k = k.contiguous().view(k.shape[0], bsz * num_heads, head_dim).transpose(0, 1)
     else:

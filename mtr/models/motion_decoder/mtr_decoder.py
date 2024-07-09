@@ -251,8 +251,8 @@ class MTRDecoder(nn.Module):
                 pos=kv_pos_embed_stack,
                 is_first=(layer_idx == 0),
                 key_batch_cnt=key_batch_cnt,
-                index_pair=query_index_pair,
-                index_pair_batch=index_pair_batch
+                index_pair=query_index_pair,        # (batch_size * num_q, k_base + k_dynamic)
+                index_pair_batch=index_pair_batch   # (batch_size * num_q)
             )
             query_feature = query_feature.view(batch_size, num_q, d_model).permute(1, 0, 2)  # (M, B, C)
 
