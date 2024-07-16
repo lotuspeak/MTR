@@ -127,7 +127,7 @@ class TransformerDecoderLayer(nn.Module):
         if self.use_local_attn:
             # Transform the queries to stack format
             query_batch_cnt = torch.zeros_like(key_batch_cnt)
-            query_batch_cnt.fill_(num_queries)
+            query_batch_cnt.fill_(num_queries)          # （num_q, num_q, ..., num_q)
 
             query_pos = query_pos.permute(1, 0, 2).contiguous().view(-1, n_model)  # (B * num_q, C)
             query_sine_embed = query_sine_embed.permute(1, 0, 2).contiguous().view(-1, n_model)  # (B * num_q, C)

@@ -16,6 +16,7 @@ MTR
 **Step 2:** Install the [Waymo Open Dataset API](https://github.com/waymo-research/waymo-open-dataset/blob/master/docs/quick_start.md) as follows: 
 ```
 pip install waymo-open-dataset-tf-2-6-0
+pip install waymo-open-dataset-tf-2-12-0 -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 **Step 3:** Preprocess the dataset:

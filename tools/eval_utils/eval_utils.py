@@ -118,7 +118,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
             batch_pred_dicts = model(batch_dict)
             final_pred_dicts = dataset.generate_prediction_dicts(batch_pred_dicts, output_path=final_output_dir if save_to_file else None)
             pred_dicts += final_pred_dicts
-            visualize(batch_pred_dicts)
+            # visualize(batch_pred_dicts)
 
         disp_dict = {}
 
