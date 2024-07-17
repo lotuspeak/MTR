@@ -45,6 +45,7 @@ class DatasetTemplate(torch_data.Dataset):
             obj_trajs_mask (num_center_objects, num_objects, num_timestamps):
             map_polylines (num_center_objects, num_polylines, num_points_each_polyline, 9): [x, y, z, dir_x, dir_y, dir_z, global_type, pre_x, pre_y]
             map_polylines_mask (num_center_objects, num_polylines, num_points_each_polyline)
+            map_polylines_center (num_cneter_objects, numpolylines, 3)
 
             obj_trajs_pos: (num_center_objects, num_objects, num_timestamps, 3)
             obj_trajs_last_pos: (num_center_objects, num_objects, 3)
@@ -60,6 +61,21 @@ class DatasetTemplate(torch_data.Dataset):
             center_gt_trajs (num_center_objects, num_future_timestamps, 4): [x, y, vx, vy]
             center_gt_trajs_mask (num_center_objects, num_future_timestamps):
             center_gt_final_valid_idx (num_center_objects): the final valid timestamp in num_future_timestamps
+            center_gt_trajs_src (num_center_objects, 91, 10):
+            
+        # as inputs
+            track_index_to_predict
+            obj_trajs
+            obj_trajs_mask
+            map_polylines
+            map_polylines_mask
+            obj_trajs_last_pos
+            map_polylines_center
+            center_objects_type
+            
+        # as labels and others
+
+            
         """
         batch_size = len(batch_list)
         key_to_list = {}
@@ -74,7 +90,10 @@ class DatasetTemplate(torch_data.Dataset):
                 val_list = [torch.from_numpy(x) for x in val_list]
                 input_dict[key] = common_utils.merge_batch_by_padding_2nd_dim(val_list)
             elif key in ['scenario_id', 'obj_types', 'obj_ids', 'center_objects_type', 'center_objects_id']:
-                input_dict[key] = np.concatenate(val_list, axis=0)
+                if key in ['center_objects_type',]:
+                    input_dict[key] = torch.from_numpy(np.concatenate(val_list, axis=0))
+                else:
+                    input_dict[key] = np.concatenate(val_list, axis=0)
             else:
                 val_list = [torch.from_numpy(x) for x in val_list]
                 input_dict[key] = torch.cat(val_list, dim=0)

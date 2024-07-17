@@ -115,8 +115,15 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     pred_dicts = []
     for i, batch_dict in enumerate(dataloader):
         with torch.no_grad():
-            batch_pred_dicts = model(batch_dict)
-            final_pred_dicts = dataset.generate_prediction_dicts(batch_pred_dicts, output_path=final_output_dir if save_to_file else None)
+            # batch_pred_dicts = model(batch_dict)
+            input_dict = batch_dict['input_dict']
+            pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = \
+                model(input_dict['track_index_to_predict'],
+                    input_dict['obj_trajs'], input_dict['obj_trajs_mask'],
+                    input_dict['map_polylines'], input_dict['map_polylines_mask'],
+                    input_dict['obj_trajs_last_pos'], input_dict['map_polylines_center'],
+                    input_dict['center_objects_type'])
+            final_pred_dicts = dataset.generate_prediction_dicts(batch_dict, pred_scores, pred_trajs, output_path=final_output_dir if save_to_file else None)
             pred_dicts += final_pred_dicts
             # visualize(batch_pred_dicts)
 

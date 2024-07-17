@@ -49,7 +49,19 @@ def train_one_epoch(model, optimizer, train_loader, accumulated_iter, optim_cfg,
         if optimizer_2 is not None:
             optimizer_2.zero_grad()
 
-        loss, tb_dict, disp_dict = model(batch)
+        # loss, tb_dict, disp_dict = model(batch)
+        input_dict = batch['input_dict']
+        pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = \
+            model(input_dict['track_index_to_predict'],
+                  input_dict['obj_trajs'], input_dict['obj_trajs_mask'],
+                  input_dict['map_polylines'], input_dict['map_polylines_mask'],
+                  input_dict['obj_trajs_last_pos'], input_dict['map_polylines_center'],
+                  input_dict['center_objects_type'])
+        
+        loss, tb_dict, disp_dict = model.get_loss(input_dict['center_objects_type'],
+                 input_dict['center_gt_trajs'], input_dict['center_gt_trajs_mask'], input_dict['center_gt_final_valid_idx'],
+                 pred_scores, intention_points,
+                 input_dict['obj_trajs_future_state'], input_dict['obj_trajs_future_mask'], pred_dense_future_trajs)
 
         loss.backward()
 

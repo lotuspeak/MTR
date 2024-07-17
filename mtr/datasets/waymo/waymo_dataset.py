@@ -286,9 +286,12 @@ class WaymoDataset(DatasetTemplate):
 
         ## generate the attributes for each object
         object_onehot_mask = torch.zeros((num_center_objects, num_objects, num_timestamps, 5))
-        object_onehot_mask[:, obj_types == 'TYPE_VEHICLE', :, 0] = 1
-        object_onehot_mask[:, obj_types == 'TYPE_PEDESTRIAN', :, 1] = 1  # TODO: CHECK THIS TYPO
-        object_onehot_mask[:, obj_types == 'TYPE_CYCLIST', :, 2] = 1
+        # object_onehot_mask[:, obj_types == 'TYPE_VEHICLE', :, 0] = 1
+        # object_onehot_mask[:, obj_types == 'TYPE_PEDESTRIAN', :, 1] = 1  # TODO: CHECK THIS TYPO
+        # object_onehot_mask[:, obj_types == 'TYPE_CYCLIST', :, 2] = 1
+        object_onehot_mask[:, obj_types == 1, :, 0] = 1
+        object_onehot_mask[:, obj_types == 2, :, 1] = 1  # TODO: CHECK THIS TYPO
+        object_onehot_mask[:, obj_types == 3, :, 2] = 1
         object_onehot_mask[torch.arange(num_center_objects), center_indices, :, 3] = 1
         object_onehot_mask[:, sdc_index, :, 4] = 1
 
@@ -458,7 +461,8 @@ class WaymoDataset(DatasetTemplate):
 
         return map_polylines, map_polylines_mask, map_polylines_center
 
-    def generate_prediction_dicts(self, batch_dict, output_path=None):
+    # def generate_prediction_dicts(self, batch_dict, output_path=None):
+    def generate_prediction_dicts(self, batch_dict, pred_scores, pred_trajs, output_path=None):
         """
 
         Args:
@@ -474,8 +478,8 @@ class WaymoDataset(DatasetTemplate):
         """
         input_dict = batch_dict['input_dict']
 
-        pred_scores = batch_dict['pred_scores']
-        pred_trajs = batch_dict['pred_trajs']
+        # pred_scores = batch_dict['pred_scores']
+        # pred_trajs = batch_dict['pred_trajs']
         center_objects_world = input_dict['center_objects_world'].type_as(pred_trajs)
 
         num_center_objects, num_modes, num_timestamps, num_feat = pred_trajs.shape

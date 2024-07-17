@@ -143,19 +143,27 @@ class MTREncoder(nn.Module):
         ret_full_feature = ret_full_feature.view(batch_size, N, d_model)
         return ret_full_feature
 
-    def forward(self, batch_dict):
+    # def forward(self, batch_dict):
+    def forward(self, track_index_to_predict, obj_trajs, obj_trajs_mask, 
+                map_polylines, map_polylines_mask, 
+                obj_trajs_last_pos, map_polylines_center):
         """
         Args:
             batch_dict:
               input_dict:
         """
-        input_dict = batch_dict['input_dict']
-        obj_trajs, obj_trajs_mask = input_dict['obj_trajs'].cuda(), input_dict['obj_trajs_mask'].cuda() 
-        map_polylines, map_polylines_mask = input_dict['map_polylines'].cuda(), input_dict['map_polylines_mask'].cuda() 
+        # input_dict = batch_dict['input_dict']
+        # obj_trajs, obj_trajs_mask = input_dict['obj_trajs'].cuda(), input_dict['obj_trajs_mask'].cuda() 
+        # map_polylines, map_polylines_mask = input_dict['map_polylines'].cuda(), input_dict['map_polylines_mask'].cuda() 
+        obj_trajs, obj_trajs_mask = obj_trajs.cuda(), obj_trajs_mask.cuda() 
+        map_polylines, map_polylines_mask = map_polylines.cuda(), map_polylines_mask.cuda() 
 
-        obj_trajs_last_pos = input_dict['obj_trajs_last_pos'].cuda() 
-        map_polylines_center = input_dict['map_polylines_center'].cuda() 
-        track_index_to_predict = input_dict['track_index_to_predict']
+        # obj_trajs_last_pos = input_dict['obj_trajs_last_pos'].cuda() 
+        # map_polylines_center = input_dict['map_polylines_center'].cuda() 
+        # track_index_to_predict = input_dict['track_index_to_predict']
+        obj_trajs_last_pos = obj_trajs_last_pos.cuda() 
+        map_polylines_center = map_polylines_center.cuda() 
+        track_index_to_predict = track_index_to_predict.cuda()
 
         assert obj_trajs_mask.dtype == torch.bool and map_polylines_mask.dtype == torch.bool
 
@@ -192,12 +200,14 @@ class MTREncoder(nn.Module):
         # organize return features
         center_objects_feature = obj_polylines_feature[torch.arange(num_center_objects), track_index_to_predict]
 
-        batch_dict['center_objects_feature'] = center_objects_feature
-        batch_dict['obj_feature'] = obj_polylines_feature
-        batch_dict['map_feature'] = map_polylines_feature
-        batch_dict['obj_mask'] = obj_valid_mask
-        batch_dict['map_mask'] = map_valid_mask
-        batch_dict['obj_pos'] = obj_trajs_last_pos
-        batch_dict['map_pos'] = map_polylines_center
+        # batch_dict['center_objects_feature'] = center_objects_feature
+        # batch_dict['obj_feature'] = obj_polylines_feature
+        # batch_dict['map_feature'] = map_polylines_feature
+        # batch_dict['obj_mask'] = obj_valid_mask
+        # batch_dict['map_mask'] = map_valid_mask
+        # batch_dict['obj_pos'] = obj_trajs_last_pos
+        # batch_dict['map_pos'] = map_polylines_center
 
-        return batch_dict
+        # return batch_dict
+
+        return center_objects_feature, obj_polylines_feature, map_polylines_feature, obj_valid_mask, map_valid_mask, obj_trajs_last_pos, map_polylines_center

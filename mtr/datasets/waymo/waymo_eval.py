@@ -7,7 +7,7 @@
 import numpy as np
 import tensorflow as tf
 import os
-
+# from  waymo_types import object_type
 from google.protobuf import text_format
 
 all_gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -31,6 +31,13 @@ object_type_to_id = {
     'TYPE_OTHER': 4
 }
 
+object_type_to_name = {
+    0: 'TYPE_UNSET',
+    1: 'TYPE_VEHICLE',
+    2: 'TYPE_PEDESTRIAN',
+    3: 'TYPE_CYCLIST',
+    4: 'TYPE_OTHER'
+}
 
 def _default_metrics_config(eval_second, num_modes_for_eval=6):
     assert eval_second in [3, 5, 8]
@@ -154,6 +161,7 @@ def transform_preds_to_waymo_format(pred_dicts, top_k_for_eval=-1, eval_second=8
             gt_is_valid[scene_idx, obj_idx] = cur_pred['gt_trajs'][:num_frames_in_total, -1]
             pred_gt_idxs[scene_idx, obj_idx, 0] = obj_idx
             pred_gt_idx_valid_mask[scene_idx, obj_idx, 0] = 1
+            cur_pred['object_type'] = object_type_to_name[cur_pred['object_type'].view(-1).numpy()[0]]
             object_type[scene_idx, obj_idx] = object_type_to_id[cur_pred['object_type']]
             object_id[scene_idx, obj_idx] = cur_pred['object_id']
 

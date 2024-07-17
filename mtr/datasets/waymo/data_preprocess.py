@@ -27,7 +27,8 @@ def decode_tracks_from_proto(tracks):
         cur_traj = np.stack(cur_traj, axis=0)  # (num_timestamp, 10)
 
         track_infos['object_id'].append(cur_data.id)
-        track_infos['object_type'].append(object_type[cur_data.object_type])
+        track_infos['object_type'].append(cur_data.object_type)
+        # track_infos['object_type'].append(object_type[cur_data.object_type])
         track_infos['trajs'].append(cur_traj)
 
     track_infos['trajs'] = np.stack(track_infos['trajs'], axis=0)  # (num_objects, num_timestamp, 9)

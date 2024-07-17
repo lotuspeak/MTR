@@ -24,21 +24,53 @@ class MotionTransformer(nn.Module):
             config=self.model_cfg.MOTION_DECODER
         )
 
-    def forward(self, batch_dict):
-        batch_dict = self.context_encoder(batch_dict)
-        batch_dict = self.motion_decoder(batch_dict)
+    def forward(self, track_index_to_predict,
+                obj_trajs, obj_trajs_mask, 
+                map_polylines, map_polylines_mask, 
+                obj_trajs_last_pos, map_polylines_center,
+                center_objects_type):
 
-        if self.training:
-            loss, tb_dict, disp_dict = self.get_loss()
+        # batch_dict = self.context_encoder(batch_dict)
+        center_objects_feature, obj_feature, map_feature, obj_mask, map_mask, obj_pos, map_pos = \
+            self.context_encoder(track_index_to_predict, 
+                                 obj_trajs, obj_trajs_mask, 
+                                 map_polylines, map_polylines_mask, 
+                                 obj_trajs_last_pos, map_polylines_center)
 
-            tb_dict.update({'loss': loss.item()})
-            disp_dict.update({'loss': loss.item()})
-            return loss, tb_dict, disp_dict
+        # batch_dict = self.motion_decoder(batch_dict)
+        # training : pred_list, None, pred_dense_future_trajs, intention_points
+        pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = self.motion_decoder(center_objects_type,
+                                                      center_objects_feature, 
+                                                      obj_feature, obj_mask, obj_pos,
+                                                      map_feature, map_mask, map_pos)
 
-        return batch_dict
+        return  pred_scores, pred_trajs, pred_dense_future_trajs, intention_points
+    
+        # if self.training:
+        #     loss, tb_dict, disp_dict = \
+        #         self.motion_decoder.get_loss(center_objects_type,
+        #                                      center_gt_trajs, center_gt_trajs_mask, center_gt_final_valid_idx,
+        #                                     pred_list, intention_points,
+        #                                     obj_trajs_future_state,
+        #                                     obj_trajs_future_mask,
+        #                                     pred_dense_trajs)
 
-    def get_loss(self):
-        loss, tb_dict, disp_dict = self.motion_decoder.get_loss()
+        #     tb_dict.update({'loss': loss.item()})
+        #     disp_dict.update({'loss': loss.item()})
+        #     return loss, tb_dict, disp_dict
+
+        # return batch_dict
+
+    def get_loss(self, 
+                 center_objects_type,
+                 center_gt_trajs, center_gt_trajs_mask, center_gt_final_valid_idx,
+                 pred_list, intention_points,
+                 obj_trajs_future_state, obj_trajs_future_mask, pred_dense_trajs):
+
+        loss, tb_dict, disp_dict = self.motion_decoder.get_loss(center_objects_type,
+                 center_gt_trajs, center_gt_trajs_mask, center_gt_final_valid_idx,
+                 pred_list, intention_points,
+                 obj_trajs_future_state, obj_trajs_future_mask, pred_dense_trajs)
 
         return loss, tb_dict, disp_dict
 

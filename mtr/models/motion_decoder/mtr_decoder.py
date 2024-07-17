@@ -119,12 +119,17 @@ class MTRDecoder(nn.Module):
             intention_points_file = cfg.ROOT_DIR / self.model_cfg.INTENTION_POINTS_FILE
             with open(intention_points_file, 'rb') as f:
                 intention_points_dict = pickle.load(f)
+                intention_points_dict_new = {1:intention_points_dict['TYPE_VEHICLE'],
+                                             2:intention_points_dict['TYPE_PEDESTRIAN'],
+                                             3:intention_points_dict['TYPE_CYCLIST'],}
 
             intention_points = {}
             for cur_type in self.object_type:
-                cur_intention_points = intention_points_dict[cur_type]
+                cur_intention_points = intention_points_dict_new[cur_type]
                 cur_intention_points = torch.from_numpy(cur_intention_points).float().view(-1, 2).cuda()
                 intention_points[cur_type] = cur_intention_points
+                
+            intention_points = torch.stack((intention_points[1],intention_points[1], intention_points[2], intention_points[3]))
 
             intention_query_mlps = common_layers.build_mlps(
                 c_in=d_model, mlp_channels=[d_model, d_model], ret_before_act=True
@@ -173,7 +178,7 @@ class MTRDecoder(nn.Module):
 
         ret_pred_dense_future_trajs = obj_feature.new_zeros(num_center_objects, num_objects, self.num_future_frames, 7)
         ret_pred_dense_future_trajs[obj_mask] = pred_dense_trajs_valid
-        self.forward_ret_dict['pred_dense_trajs'] = ret_pred_dense_future_trajs
+        # self.forward_ret_dict['pred_dense_trajs'] = ret_pred_dense_future_trajs
 
         return ret_obj_feature, ret_pred_dense_future_trajs
 
@@ -182,9 +187,12 @@ class MTRDecoder(nn.Module):
         if self.use_place_holder:
             raise NotImplementedError
         else:
-            intention_points = torch.stack([
-                self.intention_points[center_objects_type[obj_idx]]
-                for obj_idx in range(num_center_objects)], dim=0)
+            # intention_points = torch.stack([
+            #     self.intention_points[center_objects_type[obj_idx]]
+            #     for obj_idx in range(num_center_objects)], dim=0)
+            
+            intention_points = self.intention_points[center_objects_type]
+            
             intention_points = intention_points.permute(1, 0, 2)  # (num_query, num_center_objects, 2)
 
             intention_query = position_encoding_utils.gen_sineembed_for_position(intention_points, hidden_dim=self.d_model)
@@ -294,7 +302,8 @@ class MTRDecoder(nn.Module):
     def apply_transformer_decoder(self, center_objects_feature, center_objects_type, obj_feature, obj_mask, obj_pos, map_feature, map_mask, map_pos):
         intention_query, intention_points = self.get_motion_query(center_objects_type)
         query_content = torch.zeros_like(intention_query)
-        self.forward_ret_dict['intention_points'] = intention_points.permute(1, 0, 2)  # (num_center_objects, num_query, 2)
+        # self.forward_ret_dict['intention_points'] = intention_points.permute(1, 0, 2)  # (num_center_objects, num_query, 2)
+        intention_points_return = intention_points.permute(1, 0, 2)  # (num_center_objects, num_query, 2)
 
         num_center_objects = query_content.shape[1]
         num_query = query_content.shape[0]
@@ -364,16 +373,24 @@ class MTRDecoder(nn.Module):
             raise NotImplementedError
 
         assert len(pred_list) == self.num_decoder_layers
-        return pred_list
+        return pred_list, intention_points_return
 
-    def get_decoder_loss(self, tb_pre_tag=''):
-        center_gt_trajs = self.forward_ret_dict['center_gt_trajs'].cuda()
-        center_gt_trajs_mask = self.forward_ret_dict['center_gt_trajs_mask'].cuda()
-        center_gt_final_valid_idx = self.forward_ret_dict['center_gt_final_valid_idx'].long()
+    # def get_decoder_loss(self, tb_pre_tag=''):
+    def get_decoder_loss(self, center_objects_type,
+                         center_gt_trajs, center_gt_trajs_mask, center_gt_final_valid_idx,
+                         pred_list, intention_points,
+                         tb_pre_tag=''):
+        # center_gt_trajs = self.forward_ret_dict['center_gt_trajs'].cuda()
+        # center_gt_trajs_mask = self.forward_ret_dict['center_gt_trajs_mask'].cuda()
+        # center_gt_final_valid_idx = self.forward_ret_dict['center_gt_final_valid_idx'].long()
+        center_gt_trajs = center_gt_trajs.cuda()
+        center_gt_trajs_mask = center_gt_trajs_mask.cuda()
+        center_gt_final_valid_idx = center_gt_final_valid_idx.long()
+
         assert center_gt_trajs.shape[-1] == 4
 
-        pred_list = self.forward_ret_dict['pred_list']
-        intention_points = self.forward_ret_dict['intention_points']  # (num_center_objects, num_query, 2)
+        # pred_list = self.forward_ret_dict['pred_list']
+        # intention_points = self.forward_ret_dict['intention_points']  # (num_center_objects, num_query, 2)
 
         num_center_objects = center_gt_trajs.shape[0]
         center_gt_goals = center_gt_trajs[torch.arange(num_center_objects), center_gt_final_valid_idx, 0:2]  # (num_center_objects, 2)
@@ -425,7 +442,8 @@ class MTRDecoder(nn.Module):
                 layer_tb_dict_ade = motion_utils.get_ade_of_each_category(
                     pred_trajs=pred_trajs_gmm[:, :, :, 0:2],
                     gt_trajs=center_gt_trajs[:, :, 0:2], gt_trajs_mask=center_gt_trajs_mask,
-                    object_types=self.forward_ret_dict['center_objects_type'],
+                    # object_types=self.forward_ret_dict['center_objects_type'],
+                    object_types=center_objects_type,
                     valid_type_list=self.object_type,
                     post_tag=f'_layer_{layer_idx}',
                     pre_tag=tb_pre_tag
@@ -436,10 +454,19 @@ class MTRDecoder(nn.Module):
         total_loss = total_loss / self.num_decoder_layers
         return total_loss, tb_dict, disp_dict
 
-    def get_dense_future_prediction_loss(self, tb_pre_tag='', tb_dict=None, disp_dict=None):
-        obj_trajs_future_state = self.forward_ret_dict['obj_trajs_future_state'].cuda()
-        obj_trajs_future_mask = self.forward_ret_dict['obj_trajs_future_mask'].cuda()
-        pred_dense_trajs = self.forward_ret_dict['pred_dense_trajs']  # (num_center_objects, num_objects, num_future_frames, 7)
+    # def get_dense_future_prediction_loss(self, tb_pre_tag='', tb_dict=None, disp_dict=None):
+    def get_dense_future_prediction_loss(self, 
+                                         obj_trajs_future_state, 
+                                         obj_trajs_future_mask,
+                                         pred_dense_trajs,
+                                         tb_pre_tag='', tb_dict=None, disp_dict=None):
+        # obj_trajs_future_state = self.forward_ret_dict['obj_trajs_future_state'].cuda()
+        # obj_trajs_future_mask = self.forward_ret_dict['obj_trajs_future_mask'].cuda()
+        # pred_dense_trajs = self.forward_ret_dict['pred_dense_trajs']  # (num_center_objects, num_objects, num_future_frames, 7)
+        obj_trajs_future_state = obj_trajs_future_state.cuda()
+        obj_trajs_future_mask = obj_trajs_future_mask.cuda()
+        # pred_dense_trajs = self.forward_ret_dict['pred_dense_trajs']  # (num_center_objects, num_objects, num_future_frames, 7)
+        
         assert pred_dense_trajs.shape[-1] == 7
         assert obj_trajs_future_state.shape[-1] == 4
 
@@ -477,9 +504,24 @@ class MTRDecoder(nn.Module):
         tb_dict[f'{tb_pre_tag}loss_dense_prediction'] = loss_reg.item()
         return loss_reg, tb_dict, disp_dict
 
-    def get_loss(self, tb_pre_tag=''):
-        loss_decoder, tb_dict, disp_dict = self.get_decoder_loss(tb_pre_tag=tb_pre_tag)
-        loss_dense_prediction, tb_dict, disp_dict = self.get_dense_future_prediction_loss(tb_pre_tag=tb_pre_tag, tb_dict=tb_dict, disp_dict=disp_dict)
+    def get_loss(self, center_objects_type,
+                 center_gt_trajs, center_gt_trajs_mask, center_gt_final_valid_idx,
+                 pred_list, intention_points,
+                 obj_trajs_future_state,
+                 obj_trajs_future_mask,
+                 pred_dense_trajs, 
+                 tb_pre_tag=''):
+
+        loss_decoder, tb_dict, disp_dict = \
+            self.get_decoder_loss(center_objects_type,
+                                  center_gt_trajs, center_gt_trajs_mask, center_gt_final_valid_idx,
+                                  pred_list, intention_points,
+                                  tb_pre_tag=tb_pre_tag)
+        loss_dense_prediction, tb_dict, disp_dict = \
+            self.get_dense_future_prediction_loss(obj_trajs_future_state,
+                                                  obj_trajs_future_mask,
+                                                  pred_dense_trajs, 
+                                                  tb_pre_tag=tb_pre_tag, tb_dict=tb_dict, disp_dict=disp_dict)
 
         total_loss = loss_decoder + loss_dense_prediction
         tb_dict[f'{tb_pre_tag}loss'] = total_loss.item()
@@ -487,7 +529,8 @@ class MTRDecoder(nn.Module):
 
         return total_loss, tb_dict, disp_dict
 
-    def generate_final_prediction(self, pred_list, batch_dict):
+    # def generate_final_prediction(self, pred_list, batch_dict):
+    def generate_final_prediction(self, pred_list):
         pred_scores, pred_trajs = pred_list[-1]
         pred_scores = torch.softmax(pred_scores, dim=-1)  # (num_center_objects, num_query)
 
@@ -505,11 +548,16 @@ class MTRDecoder(nn.Module):
 
         return pred_scores_final, pred_trajs_final
 
-    def forward(self, batch_dict):
-        input_dict = batch_dict['input_dict']
-        obj_feature, obj_mask, obj_pos = batch_dict['obj_feature'], batch_dict['obj_mask'], batch_dict['obj_pos']
-        map_feature, map_mask, map_pos = batch_dict['map_feature'], batch_dict['map_mask'], batch_dict['map_pos']
-        center_objects_feature = batch_dict['center_objects_feature']
+    # def forward(self, batch_dict):
+    def forward(self, 
+                center_objects_type, 
+                center_objects_feature, 
+                obj_feature, obj_mask, obj_pos, 
+                map_feature, map_mask, map_pos):
+        # input_dict = batch_dict['input_dict']
+        # obj_feature, obj_mask, obj_pos = batch_dict['obj_feature'], batch_dict['obj_mask'], batch_dict['obj_pos']
+        # map_feature, map_mask, map_pos = batch_dict['map_feature'], batch_dict['map_mask'], batch_dict['map_pos']
+        # center_objects_feature = batch_dict['center_objects_feature']
         num_center_objects, num_objects, _ = obj_feature.shape
         num_polylines = map_feature.shape[1]
 
@@ -528,27 +576,31 @@ class MTRDecoder(nn.Module):
             obj_feature=obj_feature, obj_mask=obj_mask, obj_pos=obj_pos
         )
         # decoder layers
-        pred_list = self.apply_transformer_decoder(
+        pred_list, intention_points = self.apply_transformer_decoder(
             center_objects_feature=center_objects_feature,
-            center_objects_type=input_dict['center_objects_type'],
+            # center_objects_type=input_dict['center_objects_type'],
+            center_objects_type=center_objects_type,
             obj_feature=obj_feature, obj_mask=obj_mask, obj_pos=obj_pos,
             map_feature=map_feature, map_mask=map_mask, map_pos=map_pos
         )
 
-        self.forward_ret_dict['pred_list'] = pred_list
+        # self.forward_ret_dict['pred_list'] = pred_list
 
         if not self.training:
-            pred_scores, pred_trajs = self.generate_final_prediction(pred_list=pred_list, batch_dict=batch_dict)
-            batch_dict['pred_scores'] = pred_scores
-            batch_dict['pred_trajs'] = pred_trajs
+            # pred_scores, pred_trajs = self.generate_final_prediction(pred_list=pred_list, batch_dict=batch_dict)
+            pred_scores, pred_trajs = self.generate_final_prediction(pred_list=pred_list)
+            # batch_dict['pred_scores'] = pred_scores
+            # batch_dict['pred_trajs'] = pred_trajs
+            return pred_scores, pred_trajs, pred_dense_future_trajs, intention_points
 
-        else:
-            self.forward_ret_dict['center_gt_trajs'] = input_dict['center_gt_trajs']
-            self.forward_ret_dict['center_gt_trajs_mask'] = input_dict['center_gt_trajs_mask']
-            self.forward_ret_dict['center_gt_final_valid_idx'] = input_dict['center_gt_final_valid_idx']
-            self.forward_ret_dict['obj_trajs_future_state'] = input_dict['obj_trajs_future_state']
-            self.forward_ret_dict['obj_trajs_future_mask'] = input_dict['obj_trajs_future_mask']
+        # else:
+            # self.forward_ret_dict['center_gt_trajs'] = input_dict['center_gt_trajs']
+            # self.forward_ret_dict['center_gt_trajs_mask'] = input_dict['center_gt_trajs_mask']
+            # self.forward_ret_dict['center_gt_final_valid_idx'] = input_dict['center_gt_final_valid_idx']
+            # self.forward_ret_dict['obj_trajs_future_state'] = input_dict['obj_trajs_future_state']
+            # self.forward_ret_dict['obj_trajs_future_mask'] = input_dict['obj_trajs_future_mask']
 
-            self.forward_ret_dict['center_objects_type'] = input_dict['center_objects_type']
+            # self.forward_ret_dict['center_objects_type'] = input_dict['center_objects_type']
 
-        return batch_dict
+        # return batch_dict
+        return pred_list, None, pred_dense_future_trajs, intention_points
