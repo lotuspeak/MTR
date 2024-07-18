@@ -26,7 +26,7 @@ def parse_config():
     parser.add_argument('--batch_size', type=int, default=2, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=3, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=1, help='number of workers for dataloader')
-    parser.add_argument('--extra_tag', type=str, default='onnx3', help='extra tag for this experiment')
+    parser.add_argument('--extra_tag', type=str, default='onnx5', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, default=None, help='pretrained_model')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
@@ -102,7 +102,7 @@ def main():
     model.eval()
     # 开始转onnx
     # torch.onnx.export(model, batch, 'test.onnx', export_params=True, training=False, input_names=input_names, output_names=out_names)
-    torch.onnx.export(model, inputs, '/home/nh/code/auto/MTR/test.onnx', export_params=True)
+    torch.onnx.export(model, inputs, '/home/nh/code/auto/MTR/test5.onnx', export_params=True)
     print('please run: python -m onnxsim test.onnx test_sim.onnx\n')
 
 if __name__ == '__main__':

@@ -66,10 +66,18 @@ class TransformerEncoderLayer(nn.Module):
                      key_batch_cnt=None, 
                      index_pair_batch=None):
         q = k = self.with_pos_embed(src, pos)
-        src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
-                              key_padding_mask=src_key_padding_mask, 
-                              index_pair=index_pair, query_batch_cnt=query_batch_cnt, 
-                              key_batch_cnt=key_batch_cnt, index_pair_batch=index_pair_batch)[0] 
+        if self.use_local_attn:
+            src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
+                                key_padding_mask=src_key_padding_mask, 
+                                index_pair=index_pair, query_batch_cnt=query_batch_cnt, 
+                                key_batch_cnt=key_batch_cnt, index_pair_batch=index_pair_batch)[0] 
+        else:
+            # src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
+            #                     key_padding_mask=src_key_padding_mask, 
+            #                     index_pair=index_pair, query_batch_cnt=query_batch_cnt, 
+            #                     key_batch_cnt=key_batch_cnt, index_pair_batch=index_pair_batch)[0] 
+            src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
+                                key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
         src = self.norm1(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))

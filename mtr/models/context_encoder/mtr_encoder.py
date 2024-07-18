@@ -49,6 +49,9 @@ class MTREncoder(nn.Module):
 
         self.self_attn_layers = nn.ModuleList(self_attn_layers)
         self.num_out_channels = self.model_cfg.D_MODEL
+        ## for mimic local self attention
+        self.attn_mask_dist_threshold = self.model_cfg.ATTN_MASK_DIST_THRESHOLD
+        self.nhead = self.model_cfg.NUM_ATTN_HEAD
 
     def build_polyline_encoder(self, in_channels, hidden_dim, num_layers, num_pre_layers=1, out_channels=None):
         ret_polyline_encoder = polyline_encoder.PointNetPolylineEncoder(
@@ -79,15 +82,23 @@ class MTREncoder(nn.Module):
 
         batch_size, N, d_model = x.shape
         x_t = x.permute(1, 0, 2)
-        x_mask_t = x_mask.permute(1, 0, 2)
-        x_pos_t = x_pos.permute(1, 0, 2)
+        x_pos_t = x_pos.permute(1, 0, 2)[:,:,:2]
  
         pos_embedding = position_encoding_utils.gen_sineembed_for_position(x_pos_t, hidden_dim=d_model)
-
+        
+        ## mimic the LOCAL self attention
+        attn_mask = None
+        if self.attn_mask_dist_threshold > 0.0:
+            x_pos_dist = (x_pos[:, :, None, 0:2] - x_pos[:, None, :, 0:2]).norm(dim=-1)
+            x_pos_dist_mask = x_pos_dist > self.attn_mask_dist_threshold
+            attn_mask = x_pos_dist_mask[:, None, :, :].repeat(1, self.nhead, 1, 1).view(-1, N, N)
+        
         for k in range(len(self.self_attn_layers)):
             x_t = self.self_attn_layers[k](
                 src=x_t,
-                src_key_padding_mask=~x_mask_t,
+                src_mask = attn_mask,
+                # src_key_padding_mask=~x_mask_t,
+                src_key_padding_mask=~x_mask,
                 pos=pos_embedding
             )
         x_out = x_t.permute(1, 0, 2)  # (batch_size, N, d_model)

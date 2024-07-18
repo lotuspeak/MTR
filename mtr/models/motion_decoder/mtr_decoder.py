@@ -50,7 +50,8 @@ class MTRDecoder(nn.Module):
             nhead=self.model_cfg.NUM_ATTN_HEAD,
             dropout=self.model_cfg.get('DROPOUT_OF_ATTN', 0.1),
             num_decoder_layers=self.num_decoder_layers,
-            use_local_attn=True
+            # use_local_attn=True
+            use_local_attn=False
         )
         if map_d_model != self.d_model:
             temp_layer = nn.Linear(self.d_model, map_d_model)
@@ -326,15 +327,15 @@ class MTRDecoder(nn.Module):
             ) 
 
             # query map feature
-            collected_idxs, base_map_idxs = self.apply_dynamic_map_collection(
-                map_pos=map_pos, map_mask=map_mask,
-                pred_waypoints=pred_waypoints,
-                base_region_offset=self.model_cfg.CENTER_OFFSET_OF_MAP,
-                num_waypoint_polylines=self.model_cfg.NUM_WAYPOINT_MAP_POLYLINES,
-                num_base_polylines=self.model_cfg.NUM_BASE_MAP_POLYLINES,
-                base_map_idxs=base_map_idxs,
-                num_query=num_query
-            )
+            # collected_idxs, base_map_idxs = self.apply_dynamic_map_collection(
+            #     map_pos=map_pos, map_mask=map_mask,
+            #     pred_waypoints=pred_waypoints,
+            #     base_region_offset=self.model_cfg.CENTER_OFFSET_OF_MAP,
+            #     num_waypoint_polylines=self.model_cfg.NUM_WAYPOINT_MAP_POLYLINES,
+            #     num_base_polylines=self.model_cfg.NUM_BASE_MAP_POLYLINES,
+            #     base_map_idxs=base_map_idxs,
+            #     num_query=num_query
+            # )
 
             map_query_feature = self.apply_cross_attention(
                 kv_feature=map_feature, kv_mask=map_mask, kv_pos=map_pos,
@@ -342,8 +343,9 @@ class MTRDecoder(nn.Module):
                 attention_layer=self.map_decoder_layers[layer_idx],
                 layer_idx=layer_idx,
                 dynamic_query_center=dynamic_query_center,
-                use_local_attn=True,
-                query_index_pair=collected_idxs,
+                # use_local_attn=True,
+                use_local_attn=False,
+                # query_index_pair=collected_idxs,
                 query_content_pre_mlp=self.map_query_content_mlps[layer_idx],
                 query_embed_pre_mlp=self.map_query_embed_mlps
             ) 
