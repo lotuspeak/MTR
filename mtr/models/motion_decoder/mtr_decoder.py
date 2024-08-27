@@ -268,7 +268,10 @@ class MTRDecoder(nn.Module):
 
     def apply_dynamic_map_collection(self, map_pos, map_mask, pred_waypoints, base_region_offset, num_query, num_waypoint_polylines=128, num_base_polylines=256, base_map_idxs=None):
         map_pos = map_pos.clone()
-        map_pos[~map_mask] = 10000000.0
+        # map_pos[~map_mask] = 10000000.0
+        masked_pos = torch.tensor(10000000.0, device=map_pos.device).expand(map_pos.shape) # for onnx
+        map_mask = map_mask.view(map_mask.shape[0],map_mask.shape[1],1).expand(-1, -1, 3) # for onnx
+        map_pos = torch.where(~map_mask, masked_pos, map_pos) # for onnx
         num_polylines = map_pos.shape[1]
 
         if base_map_idxs is None:

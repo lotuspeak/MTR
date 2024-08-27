@@ -119,7 +119,8 @@ class MTREncoder(nn.Module):
         batch_cnt = batch_offsets[1:] - batch_offsets[:-1]
 
         index_pair = knn_utils.knn_batch_mlogk(
-            x_pos_stack, x_pos_stack,  batch_idxs, batch_offsets, num_of_neighbors
+            # x_pos_stack, x_pos_stack,  batch_idxs, batch_offsets, num_of_neighbors
+            x_pos_stack, x_pos_stack,  batch_idxs, batch_offsets # for onnx
         )  # (num_valid_elems, K)
 
         # positional encoding

@@ -13,6 +13,7 @@ import torch
 from mtr.datasets.dataset import DatasetTemplate
 from mtr.utils import common_utils
 from mtr.config import cfg
+from .waymo_eval import object_type_to_id, object_type_to_name
 
 
 class WaymoDataset(DatasetTemplate):
@@ -33,7 +34,8 @@ class WaymoDataset(DatasetTemplate):
         self.logger.info(f'Total scenes before filters: {len(infos)}')
 
         for func_name, val in self.dataset_cfg.INFO_FILTER_DICT.items():
-            infos = getattr(self, func_name)(infos, val)
+            # infos = getattr(self, func_name)(infos, val)
+            infos = getattr(self, func_name)(infos, [object_type_to_name[t] for t in val])
 
         return infos
 
@@ -122,7 +124,7 @@ class WaymoDataset(DatasetTemplate):
 
             'center_objects_world': center_objects,
             'center_objects_id': np.array(track_infos['object_id'])[track_index_to_predict],
-            'center_objects_type': np.array(track_infos['object_type'])[track_index_to_predict],
+            'center_objects_type': np.array([object_type_to_id[ot] for ot in track_infos['object_type']])[track_index_to_predict],
 
             'obj_trajs_future_state': obj_trajs_future_state,
             'obj_trajs_future_mask': obj_trajs_future_mask,

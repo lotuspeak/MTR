@@ -48,7 +48,8 @@ knn_batch = KNNBatch.apply
 
 class KNNBatchMlogK(Function):
     @staticmethod
-    def forward(ctx, xyz, query_xyz, batch_idxs, query_batch_offsets, k):
+    # def forward(ctx, xyz, query_xyz, batch_idxs, query_batch_offsets, k):
+    def forward(ctx, xyz, query_xyz, batch_idxs, query_batch_offsets):
         '''
         :param ctx:
         :param xyz: (n, 3) float
@@ -58,7 +59,7 @@ class KNNBatchMlogK(Function):
         :param k: int
         :return: idx (n, k)
         '''
-
+        k = 16
         n = xyz.size(0)
         m = query_xyz.size(0)
         # assert k <= m
@@ -72,6 +73,10 @@ class KNNBatchMlogK(Function):
         knn_cuda.knn_batch_mlogk(xyz, query_xyz, batch_idxs, query_batch_offsets, idx, n, m, k)
 
         return idx
+    
+    @staticmethod 
+    def symbolic(g,  xyz, query_xyz, batch_idxs, query_batch_offsets): 
+        return g.op('custom::KNNBatchMlogK',  xyz, query_xyz, batch_idxs, query_batch_offsets) 
 
     @staticmethod
     def backward(ctx, a=None):

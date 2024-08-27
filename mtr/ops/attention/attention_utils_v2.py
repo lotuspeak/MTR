@@ -70,6 +70,10 @@ class AttentionWeightComputation(Function):
         return output
 
     @staticmethod
+    def symbolic(g, query_batch_cnt, key_batch_cnt, index_pair_batch, index_pair, query_features, key_features): 
+        return g.op('custom::AttentionWeightComputation',  query_batch_cnt, key_batch_cnt, index_pair_batch, index_pair, query_features, key_features)
+
+    @staticmethod
     def backward(ctx, grad_out: torch.Tensor):
         """
         Args:
@@ -158,6 +162,10 @@ class AttentionValueComputation(Function):
             index_pair, attn_weight, value_features
         )
         return output
+
+    @staticmethod
+    def symbolic(g, query_batch_cnt, key_batch_cnt, index_pair_batch, index_pair, attn_weight, value_features):
+        return g.op('custom::AttentionValueComputation', query_batch_cnt, key_batch_cnt, index_pair_batch, index_pair, attn_weight, value_features)
 
     @staticmethod
     def backward(ctx, grad_out: torch.Tensor):

@@ -21,12 +21,13 @@ from train_utils.train_utils import train_model
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data.yaml", help='specify the config for training')
+    # parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data.yaml", help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr_onnx.yaml", help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=2, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=3, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=1, help='number of workers for dataloader')
-    parser.add_argument('--extra_tag', type=str, default='onnx3', help='extra tag for this experiment')
+    parser.add_argument('--extra_tag', type=str, default='onnx1', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, default=None, help='pretrained_model')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
@@ -66,7 +67,8 @@ def main():
     # output_dir.mkdir(parents=True, exist_ok=True)
     # ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    ckpt = ckpt_dir / 'checkpoint_epoch_10.pth'    
+    # ckpt = ckpt_dir / 'checkpoint_epoch_10.pth'
+    ckpt = ckpt_dir / 'best_model.pth'    
 
     model = model_utils.MotionTransformer(config=cfg.MODEL)
 
@@ -93,16 +95,26 @@ def main():
 
     # 定义输入tensor
     # x = torch.randn(1, 3, args.input_size[0], args.input_size[1])
-    input_names = ["input"]
+    input_names = ["track_index_to_predict", "obj_trajs", "obj_trajs_masks",
+              "map_polylines", "map_polylines_mask", "obj_trajs_last_pos", "map_polylines_center", "center_objects_type"]
+    output_names = ["pred_scores", "pred_trajs", "pred_dense_future_trajs", "intention_points"]
     inputs = (track_index_to_predict, obj_trajs, obj_trajs_masks, 
               map_polylines, map_polylines_mask, obj_trajs_last_pos, map_polylines_center, center_objects_type)
-    out_names = ["output"]
     # print(msg)
     # 模型调整为eval模式
     model.eval()
+    output_tensor = model(*inputs)
+
     # 开始转onnx
+    # trace_backbone = torch.jit.trace(model, inputs, check_trace=False)
     # torch.onnx.export(model, batch, 'test.onnx', export_params=True, training=False, input_names=input_names, output_names=out_names)
-    torch.onnx.export(model, inputs, '/home/nh/code/auto/MTR/test.onnx', export_params=True)
+    torch.onnx.export(model, 
+                      inputs, 
+                      '/home/nh/code/auto/MTR/test.onnx', 
+                      export_params=True, 
+                      input_names= input_names, 
+                      output_names=output_names,
+                      dynamic_axes=None)
     print('please run: python -m onnxsim test.onnx test_sim.onnx\n')
 
 if __name__ == '__main__':
