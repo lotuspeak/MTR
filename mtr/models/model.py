@@ -25,12 +25,16 @@ class MotionTransformer(nn.Module):
         )
 
     def forward(self, track_index_to_predict,
-                obj_trajs, obj_trajs_mask, 
-                map_polylines, map_polylines_mask, 
+                obj_trajs, obj_trajs_mask,          # (bsz, num_objects, 11, 29), (bsz, num_objects, 11)
+                map_polylines, map_polylines_mask,  # (bsz, num_polylines, 20, 9), (bsz, num_objects, 20)
                 obj_trajs_last_pos, map_polylines_center,
                 center_objects_type):
 
-        # batch_dict = self.context_encoder(batch_dict)
+        # batch_dict = self.context_encoder(batch_dict) 
+        # (num_center_objects/bsz, d_model) 
+        # (bsz, num_objects/num_polylines, d_model), 
+        # (bsz, num_objects/num_polylines), 
+        # (bsz, num_objects/num_polylines, 3) 
         center_objects_feature, obj_feature, map_feature, obj_mask, map_mask, obj_pos, map_pos = \
             self.context_encoder(track_index_to_predict, 
                                  obj_trajs, obj_trajs_mask, 
@@ -39,12 +43,19 @@ class MotionTransformer(nn.Module):
 
         # batch_dict = self.motion_decoder(batch_dict)
         # training : pred_list, None, pred_dense_future_trajs, intention_points
-        pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = self.motion_decoder(center_objects_type,
-                                                      center_objects_feature, 
-                                                      obj_feature, obj_mask, obj_pos,
-                                                      map_feature, map_mask, map_pos)
+        if self.training:
+            pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = self.motion_decoder(center_objects_type,
+                                                        center_objects_feature, 
+                                                        obj_feature, obj_mask, obj_pos,
+                                                        map_feature, map_mask, map_pos)
+            return  pred_scores, pred_trajs, pred_dense_future_trajs, intention_points
 
-        return  pred_scores, pred_trajs, pred_dense_future_trajs, intention_points
+        else:
+            pred_scores, pred_trajs = self.motion_decoder(center_objects_type,
+                                                        center_objects_feature, 
+                                                        obj_feature, obj_mask, obj_pos,
+                                                        map_feature, map_mask, map_pos)
+            return  pred_scores, pred_trajs
     
         # if self.training:
         #     loss, tb_dict, disp_dict = \

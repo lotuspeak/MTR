@@ -57,15 +57,15 @@ class TransformerEncoderLayer(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward_post(self,
-                     src,
-                     src_mask: Optional[Tensor] = None,
-                     src_key_padding_mask: Optional[Tensor] = None,
-                     pos: Optional[Tensor] = None, 
+                     src,                           # ( N, batch_size, d_model)
+                     src_mask: Optional[Tensor] = None, # [batch_size*nhead, N, N]
+                     src_key_padding_mask: Optional[Tensor] = None, # (batch_size, N)
+                     pos: Optional[Tensor] = None,  # ( N, batch_size, d_model)
                      index_pair=None, 
                      query_batch_cnt=None, 
                      key_batch_cnt=None, 
                      index_pair_batch=None):
-        q = k = self.with_pos_embed(src, pos)
+        q = k = self.with_pos_embed(src, pos)   # q = k += pos
         if self.use_local_attn:
             src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
                                 key_padding_mask=src_key_padding_mask, 
@@ -77,13 +77,13 @@ class TransformerEncoderLayer(nn.Module):
             #                     index_pair=index_pair, query_batch_cnt=query_batch_cnt, 
             #                     key_batch_cnt=key_batch_cnt, index_pair_batch=index_pair_batch)[0] 
             src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
-                                key_padding_mask=src_key_padding_mask)[0]
-        src = src + self.dropout1(src2)
+                                key_padding_mask=src_key_padding_mask)[0] # ( N, batch_size, d_model)
+        src = src + self.dropout1(src2) # dropout(sublayer1: self attn)
         src = self.norm1(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src = src + self.dropout2(src2)
+        src = src + self.dropout2(src2) # dropout(sublayer2: ffn)
         src = self.norm2(src)
-        return src
+        return src # ( N/tgt_len, batch_size, d_model)
 
     def forward_pre(self, src,
                     src_mask: Optional[Tensor] = None,
@@ -105,10 +105,10 @@ class TransformerEncoderLayer(nn.Module):
         src = src + self.dropout2(src2)
         return src
 
-    def forward(self, src,
-                src_mask: Optional[Tensor] = None,
-                src_key_padding_mask: Optional[Tensor] = None,
-                pos: Optional[Tensor] = None, 
+    def forward(self, src,                      # ( N, batch_size, d_model)
+                src_mask: Optional[Tensor] = None,              # [batch_size*nhead, N, N]
+                src_key_padding_mask: Optional[Tensor] = None,  # (batch_size, N)
+                pos: Optional[Tensor] = None,   # ( N, batch_size, d_model)
                 # for local-attn
                 index_pair=None, 
                 query_batch_cnt=None, 

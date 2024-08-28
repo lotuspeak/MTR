@@ -22,18 +22,18 @@ from mtr.datasets import build_dataloader
 from mtr.models import model as model_utils
 from mtr.utils import common_utils
 
-
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     # parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
-    parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data.yaml", help='specify the config for training')
+    # parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data.yaml", help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data_test_onnx.yaml", help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
     # parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--workers', type=int, default=1, help='number of workers for dataloader')
-    parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
+    parser.add_argument('--extra_tag', type=str, default='onnx5', help='extra tag for this experiment')
     # parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
-    parser.add_argument('--ckpt', type=str, default="output/cfgs/waymo/mtr+100_percent_data/default-4/ckpt/checkpoint_epoch_30.pth", help='checkpoint to start from')
+    parser.add_argument('--ckpt', type=str, default="output/cfgs/waymo/mtr+100_percent_data_test_onnx/onnx5/ckpt/best_model.pth", help='checkpoint to start from')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
@@ -201,8 +201,12 @@ def main():
 
     test_set, test_loader, sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
-        batch_size=args.batch_size,
-        dist=dist_test, workers=args.workers, logger=logger, training=False
+        # batch_size=args.batch_size,
+        batch_size=1,
+        dist=dist_test, 
+        # workers=args.workers,
+        workers=1, 
+        logger=logger, training=False
     )
     model = model_utils.MotionTransformer(config=cfg.MODEL)
     with torch.no_grad():

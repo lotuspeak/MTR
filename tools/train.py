@@ -32,10 +32,11 @@ def parse_config():
     # parser.add_argument('--epochs', type=int, default=None, required=False, help='number of epochs to train for')
     # parser.add_argument('--workers', type=int, default=8, help='number of workers for dataloader')
     # parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
-    parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data.yaml", help='specify the config for training')
+    # parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data.yaml", help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default="tools/cfgs/waymo/mtr+100_percent_data_test_onnx.yaml", help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=3, required=False, help='batch size for training')
-    parser.add_argument('--epochs', type=int, default=10, required=False, help='number of epochs to train for')
+    parser.add_argument('--epochs', type=int, default=30, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=1, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='onnx5', help='extra tag for this experiment')
 

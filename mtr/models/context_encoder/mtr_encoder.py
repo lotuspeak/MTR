@@ -75,31 +75,31 @@ class MTREncoder(nn.Module):
 
         Args:
             x (batch_size, N, d_model):
-            x_mask (batch_size, N):
+            x_mask (batch_size, N):  True: valid
             x_pos (batch_size, N, 3):
         """
         assert torch.all(x_mask.sum(dim=-1) > 0)
 
         batch_size, N, d_model = x.shape
-        x_t = x.permute(1, 0, 2)
-        x_pos_t = x_pos.permute(1, 0, 2)[:,:,:2]
+        x_t = x.permute(1, 0, 2)                    # ( N, batch_size, d_model)
+        x_pos_t = x_pos.permute(1, 0, 2)[:,:,:2]    # ( N, batch_size, 2)
  
         pos_embedding = position_encoding_utils.gen_sineembed_for_position(x_pos_t, hidden_dim=d_model)
         
         ## mimic the LOCAL self attention
         attn_mask = None
         if self.attn_mask_dist_threshold > 0.0:
-            x_pos_dist = (x_pos[:, :, None, 0:2] - x_pos[:, None, :, 0:2]).norm(dim=-1)
+            x_pos_dist = (x_pos[:, :, None, 0:2] - x_pos[:, None, :, 0:2]).norm(dim=-1) # [batch_size, N, N]
             x_pos_dist_mask = x_pos_dist > self.attn_mask_dist_threshold
-            attn_mask = x_pos_dist_mask[:, None, :, :].repeat(1, self.nhead, 1, 1).view(-1, N, N)
+            attn_mask = x_pos_dist_mask[:, None, :, :].repeat(1, self.nhead, 1, 1).view(-1, N, N) # [batch_size*nhead, N, N]
         
         for k in range(len(self.self_attn_layers)):
             x_t = self.self_attn_layers[k](
-                src=x_t,
-                src_mask = attn_mask,
+                src=x_t,              # ( N, batch_size, d_model)
+                src_mask = attn_mask, # [batch_size*nhead, N, N]
                 # src_key_padding_mask=~x_mask_t,
-                src_key_padding_mask=~x_mask,
-                pos=pos_embedding
+                src_key_padding_mask=~x_mask,   # (batch_size, N) True: not valid，need mask
+                pos=pos_embedding     # ( N, batch_size, d_model)
             )
         x_out = x_t.permute(1, 0, 2)  # (batch_size, N, d_model)
         return x_out
@@ -181,7 +181,8 @@ class MTREncoder(nn.Module):
         num_center_objects, num_objects, num_timestamps, _ = obj_trajs.shape
         num_polylines = map_polylines.shape[1]
 
-        # apply polyline encoder
+        # apply polyline encoder 
+        # [bs, num_objects, num_timestamps, 29],  [bs, num_objects, num_timestamps, 1]
         obj_trajs_in = torch.cat((obj_trajs, obj_trajs_mask[:, :, :, None].type_as(obj_trajs)), dim=-1)
         obj_polylines_feature = self.agent_polyline_encoder(obj_trajs_in, obj_trajs_mask)  # (num_center_objects, num_objects, C)
         map_polylines_feature = self.map_polyline_encoder(map_polylines, map_polylines_mask)  # (num_center_objects, num_polylines, C)
@@ -189,26 +190,27 @@ class MTREncoder(nn.Module):
         # apply self-attn
         obj_valid_mask = (obj_trajs_mask.sum(dim=-1) > 0)  # (num_center_objects, num_objects)
         map_valid_mask = (map_polylines_mask.sum(dim=-1) > 0)  # (num_center_objects, num_polylines)
-
+        # (num_center_objects, num_objects + num_polylines, self.model_cfg.D_MODEL)
         global_token_feature = torch.cat((obj_polylines_feature, map_polylines_feature), dim=1) 
-        global_token_mask = torch.cat((obj_valid_mask, map_valid_mask), dim=1) 
-        global_token_pos = torch.cat((obj_trajs_last_pos, map_polylines_center), dim=1) 
+        global_token_mask = torch.cat((obj_valid_mask, map_valid_mask), dim=1) # (num_center_objects, num_objects + num_polylines)
+        global_token_pos = torch.cat((obj_trajs_last_pos, map_polylines_center), dim=1) # (num_center_objects/bsz, num_objects + num_polylines, 3)
 
         if self.use_local_attn:
             global_token_feature = self.apply_local_attn(
                 x=global_token_feature, x_mask=global_token_mask, x_pos=global_token_pos,
                 num_of_neighbors=self.model_cfg.NUM_OF_ATTN_NEIGHBORS
             )
-        else:
+        else: # (batch_size, N, d_model)
             global_token_feature = self.apply_global_attn(
                 x=global_token_feature, x_mask=global_token_mask, x_pos=global_token_pos
             )
 
-        obj_polylines_feature = global_token_feature[:, :num_objects]
-        map_polylines_feature = global_token_feature[:, num_objects:]
+        obj_polylines_feature = global_token_feature[:, :num_objects] # (num_center_objects/bsz, num_objects, d_model)
+        map_polylines_feature = global_token_feature[:, num_objects:] # (num_center_objects/bsz, num_polylines, d_model)
         assert map_polylines_feature.shape[1] == num_polylines
 
-        # organize return features
+        # organize return features 
+        # (num_center_objects/bsz, d_model)
         center_objects_feature = obj_polylines_feature[torch.arange(num_center_objects), track_index_to_predict]
 
         # batch_dict['center_objects_feature'] = center_objects_feature

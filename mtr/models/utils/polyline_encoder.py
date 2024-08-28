@@ -46,7 +46,7 @@ class PointNetPolylineEncoder(nn.Module):
         polylines_feature = polylines.new_zeros(batch_size, num_polylines,  num_points_each_polylines, polylines_feature_valid.shape[-1])
         polylines_feature[polylines_mask] = polylines_feature_valid
 
-        # get global feature
+        # get global feature (max pooling)
         pooled_feature = polylines_feature.max(dim=2)[0]
         polylines_feature = torch.cat((polylines_feature, pooled_feature[:, :, None, :].repeat(1, 1, num_points_each_polylines, 1)), dim=-1)
 

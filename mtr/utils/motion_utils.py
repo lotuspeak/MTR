@@ -29,10 +29,10 @@ def batch_nms(pred_trajs, pred_scores, dist_thresh, num_ret_modes=6):
     sorted_pred_trajs = pred_trajs[bs_idxs_full, sorted_idxs]  # (batch_size, num_modes, num_timestamps, 7)
     sorted_pred_goals = sorted_pred_trajs[:, :, -1, :]  # (batch_size, num_modes, 7)
 
-    dist = (sorted_pred_goals[:, :, None, 0:2] - sorted_pred_goals[:, None, :, 0:2]).norm(dim=-1)
+    dist = (sorted_pred_goals[:, :, None, 0:2] - sorted_pred_goals[:, None, :, 0:2]).norm(dim=-1) # # (batch_size, num_modes, num_modes)
     point_cover_mask = (dist < dist_thresh)
 
-    point_val = sorted_pred_scores.clone()  # (batch_size, N)
+    point_val = sorted_pred_scores.clone()            # (batch_size, N)
     point_val_selected = torch.zeros_like(point_val)  # (batch_size, N)
 
     ret_idxs = sorted_idxs.new_zeros(batch_size, num_ret_modes).long()

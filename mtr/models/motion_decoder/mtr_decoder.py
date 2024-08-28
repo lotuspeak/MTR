@@ -65,7 +65,7 @@ class MTRDecoder(nn.Module):
             hidden_dim=self.d_model, num_future_frames=self.num_future_frames
         )
 
-        # define the motion query
+        # define the motion query   (4,64,2), None, (Linear, BatchNorm1d, Relu, Linear)
         self.intention_points, self.intention_query, self.intention_query_mlps = self.build_motion_query(
             self.d_model, use_place_holder=self.use_place_holder
         )
@@ -152,29 +152,29 @@ class MTRDecoder(nn.Module):
         motion_vel_heads = None 
         return motion_reg_heads, motion_cls_heads, motion_vel_heads
 
-    def apply_dense_future_prediction(self, obj_feature, obj_mask, obj_pos):
+    def apply_dense_future_prediction(self, obj_feature, obj_mask, obj_pos):# (bsz, num_objects, d_model), (bsz, num_objects), (bsz, num_objects, 3)
         num_center_objects, num_objects, _ = obj_feature.shape
 
         # dense future prediction
-        obj_pos_valid = obj_pos[obj_mask][..., 0:2]
-        obj_feature_valid = obj_feature[obj_mask]
-        obj_pos_feature_valid = self.obj_pos_encoding_layer(obj_pos_valid)
-        obj_fused_feature_valid = torch.cat((obj_pos_feature_valid, obj_feature_valid), dim=-1)
+        obj_pos_valid = obj_pos[obj_mask][..., 0:2] # (N, 2), N = valid(bsz*num_objects)
+        obj_feature_valid = obj_feature[obj_mask]   # (N, d_model)
+        obj_pos_feature_valid = self.obj_pos_encoding_layer(obj_pos_valid) # (N, 2)-> MLP -> (N, d_model)
+        obj_fused_feature_valid = torch.cat((obj_pos_feature_valid, obj_feature_valid), dim=-1) # (N, 2 * d_model)
 
-        pred_dense_trajs_valid = self.dense_future_head(obj_fused_feature_valid)
-        pred_dense_trajs_valid = pred_dense_trajs_valid.view(pred_dense_trajs_valid.shape[0], self.num_future_frames, 7)
+        pred_dense_trajs_valid = self.dense_future_head(obj_fused_feature_valid) # (N, 2 * d_model)-> MLP -> (N, 7*80)
+        pred_dense_trajs_valid = pred_dense_trajs_valid.view(pred_dense_trajs_valid.shape[0], self.num_future_frames, 7) # -> (N, 80, 7)
 
-        temp_center = pred_dense_trajs_valid[:, :, 0:2] + obj_pos_valid[:, None, 0:2]
-        pred_dense_trajs_valid = torch.cat((temp_center, pred_dense_trajs_valid[:, :, 2:]), dim=-1)
+        temp_center = pred_dense_trajs_valid[:, :, 0:2] + obj_pos_valid[:, None, 0:2] # (N, 80, 2) # prediction(relative)x/y + obj_pos
+        pred_dense_trajs_valid = torch.cat((temp_center, pred_dense_trajs_valid[:, :, 2:]), dim=-1)# re concat to; (N, 80, 7)
 
         # future feature encoding and fuse to past obj_feature
-        obj_future_input_valid = pred_dense_trajs_valid[:, :, [0, 1, -2, -1]].flatten(start_dim=1, end_dim=2)  # (num_valid_objects, C)
-        obj_future_feature_valid = self.future_traj_mlps(obj_future_input_valid)
+        obj_future_input_valid = pred_dense_trajs_valid[:, :, [0, 1, -2, -1]].flatten(start_dim=1, end_dim=2)  # (num_valid_objects, C), C = 80 * 4
+        obj_future_feature_valid = self.future_traj_mlps(obj_future_input_valid) # # (N, 320)-> MLP -> (N, d_model)
+        # (N, d_model * 2)
+        obj_full_trajs_feature = torch.cat((obj_feature_valid, obj_future_feature_valid), dim=-1) # concat obj_feature(history) and obj_future_feature
+        obj_feature_valid = self.traj_fusion_mlps(obj_full_trajs_feature) #  (N, 2* d_model)-> MLP -> (N, d_model)
 
-        obj_full_trajs_feature = torch.cat((obj_feature_valid, obj_future_feature_valid), dim=-1)
-        obj_feature_valid = self.traj_fusion_mlps(obj_full_trajs_feature)
-
-        ret_obj_feature = torch.zeros_like(obj_feature)
+        ret_obj_feature = torch.zeros_like(obj_feature) # (bsz, num_objects, d_model)
         ret_obj_feature[obj_mask] = obj_feature_valid
 
         ret_pred_dense_future_trajs = obj_feature.new_zeros(num_center_objects, num_objects, self.num_future_frames, 7)
@@ -192,13 +192,13 @@ class MTRDecoder(nn.Module):
             #     self.intention_points[center_objects_type[obj_idx]]
             #     for obj_idx in range(num_center_objects)], dim=0)
             
-            intention_points = self.intention_points[center_objects_type]
+            intention_points = self.intention_points[center_objects_type]   # (num_center_objects/bsz, 64, 2)
             
             intention_points = intention_points.permute(1, 0, 2)  # (num_query, num_center_objects, 2)
-
+            # (num_query, num_center_objects/bsz, d_model)
             intention_query = position_encoding_utils.gen_sineembed_for_position(intention_points, hidden_dim=self.d_model)
             intention_query = self.intention_query_mlps(intention_query.view(-1, self.d_model)).view(-1, num_center_objects, self.d_model)  # (num_query, num_center_objects, C)
-        return intention_query, intention_points
+        return intention_query, intention_points # (num_query, num_center_objects, C), (num_query, num_center_objects, 2)
 
     def apply_cross_attention(self, kv_feature, kv_mask, kv_pos, query_content, query_embed, attention_layer,
                               dynamic_query_center=None, layer_idx=0, use_local_attn=False, query_index_pair=None,
@@ -208,9 +208,9 @@ class MTRDecoder(nn.Module):
             kv_feature (B, N, C):
             kv_mask (B, N):
             kv_pos (B, N, 3):
-            query_tgt (M, B, C):
-            query_embed (M, B, C):
-            dynamic_query_center (M, B, 2): . Defaults to None.
+            query_tgt/content (M, B, C): (num_query, bsz/num_center_objects, C)
+            query_embed (M, B, C):       (num_query, bsz/num_center_objects, C)
+            dynamic_query_center (M, B, 2): . Defaults to None. (num_query, bsz/num_center_objects, 2)
             attention_layer (layer):
 
             query_index_pair (B, M, K)
@@ -223,22 +223,22 @@ class MTRDecoder(nn.Module):
             query_content = query_content_pre_mlp(query_content)
         if query_embed_pre_mlp is not None:
             query_embed = query_embed_pre_mlp(query_embed)
-
+        # 64
         num_q, batch_size, d_model = query_content.shape
-        searching_query = position_encoding_utils.gen_sineembed_for_position(dynamic_query_center, hidden_dim=d_model)
-        kv_pos = kv_pos.permute(1, 0, 2)[:, :, 0:2]
-        kv_pos_embed = position_encoding_utils.gen_sineembed_for_position(kv_pos, hidden_dim=d_model)
+        searching_query = position_encoding_utils.gen_sineembed_for_position(dynamic_query_center, hidden_dim=d_model) #  (num_query, bsz/num_center_objects, C)
+        kv_pos = kv_pos.permute(1, 0, 2)[:, :, 0:2] # (N/src_len, bsz/num_center_objects, 2)
+        kv_pos_embed = position_encoding_utils.gen_sineembed_for_position(kv_pos, hidden_dim=d_model) # (N/src_len, bsz/num_center_objects, C)
 
         if not use_local_attn:
             query_feature = attention_layer(
-                tgt=query_content,
-                query_pos=query_embed,
-                query_sine_embed=searching_query,
-                memory=kv_feature.permute(1, 0, 2),
-                memory_key_padding_mask=~kv_mask,
-                pos=kv_pos_embed,
+                tgt=query_content,          # (num_query, bsz/num_center_objects, C)
+                query_pos=query_embed,      # (num_query, bsz/num_center_objects, C)   mlp(pos_enc) static intention query?
+                query_sine_embed=searching_query,   # (num_query, bsz/num_center_objects, C)  pos_enc(dynamic_query_center)  dynamic searching query?
+                memory=kv_feature.permute(1, 0, 2), # (N/src_len, bsz/num_center_objects, C)
+                memory_key_padding_mask=~kv_mask,   # (N/src_len, bsz/num_center_objects) True : to keep -> to mask
+                pos=kv_pos_embed,                   # (N/src_len, bsz/num_center_objects, C)  pos_enc(kv_pos)
                 is_first=(layer_idx == 0)
-            )  # (M, B, C)
+            )  # (M, B, C) (num_query, bsz/num_center_objects, C)
         else:
             batch_size, num_kv, _ = kv_feature.shape
 
@@ -301,8 +301,8 @@ class MTRDecoder(nn.Module):
         return sorted_idxs.int(), base_map_idxs
 
     def apply_transformer_decoder(self, center_objects_feature, center_objects_type, obj_feature, obj_mask, obj_pos, map_feature, map_mask, map_pos):
-        intention_query, intention_points = self.get_motion_query(center_objects_type)
-        query_content = torch.zeros_like(intention_query)
+        intention_query, intention_points = self.get_motion_query(center_objects_type) # (bs/num_center_objects) -> (num_query, num_center_objects, C), (num_query, num_center_objects, 2)
+        query_content = torch.zeros_like(intention_query) # 初始化为 0 (num_query, num_center_objects, C)
         # self.forward_ret_dict['intention_points'] = intention_points.permute(1, 0, 2)  # (num_center_objects, num_query, 2)
         intention_points_return = intention_points.permute(1, 0, 2)  # (num_center_objects, num_query, 2)
 
@@ -312,17 +312,17 @@ class MTRDecoder(nn.Module):
         center_objects_feature = center_objects_feature[None, :, :].repeat(num_query, 1, 1)  # (num_query, num_center_objects, C)
 
         base_map_idxs = None
-        pred_waypoints = intention_points.permute(1, 0, 2)[:, :, None, :]  # (num_center_objects, num_query, 1, 2)
-        dynamic_query_center = intention_points
+        pred_waypoints = intention_points.permute(1, 0, 2)[:, :, None, :]  # (num_center_objects, num_query, 1, 2) # 航点/路标初始化
+        dynamic_query_center = intention_points # (num_query, num_center_objects, 2)
 
         pred_list = []
         for layer_idx in range(self.num_decoder_layers):
             # query object feature
             obj_query_feature = self.apply_cross_attention(
-                kv_feature=obj_feature, kv_mask=obj_mask, kv_pos=obj_pos,
-                query_content=query_content, query_embed=intention_query,
+                kv_feature=obj_feature, kv_mask=obj_mask, kv_pos=obj_pos, # (bsz, num_objects, d_model), (bsz, num_objects), (bsz, num_objects, 3)
+                query_content=query_content, query_embed=intention_query, # (num_query, bsz/num_center_objects, C), (num_query, num_center_objects, C)
                 attention_layer=self.obj_decoder_layers[layer_idx],
-                dynamic_query_center=dynamic_query_center,
+                dynamic_query_center=dynamic_query_center,  # (num_query, num_center_objects, 2), pos_enc(this) used as dynamic searching query
                 layer_idx=layer_idx
             ) 
 
@@ -349,11 +349,11 @@ class MTRDecoder(nn.Module):
                 query_content_pre_mlp=self.map_query_content_mlps[layer_idx],
                 query_embed_pre_mlp=self.map_query_embed_mlps
             ) 
-
+            # (num_query, num_center_objects, D_MODEL*2 + MAP_D_MODEL)
             query_feature = torch.cat([center_objects_feature, obj_query_feature, map_query_feature], dim=-1)
-            query_content = self.query_feature_fusion_layers[layer_idx](
+            query_content = self.query_feature_fusion_layers[layer_idx](    # MLP: D_MODEL*2 + MAP_D_MODEL -> D_MODEL
                 query_feature.flatten(start_dim=0, end_dim=1)
-            ).view(num_query, num_center_objects, -1) 
+            ).view(num_query, num_center_objects, -1) # (num_query, num_center_objects, D_MODE)
 
             # motion prediction
             query_content_t = query_content.permute(1, 0, 2).contiguous().view(num_center_objects * num_query, -1)
@@ -368,7 +368,7 @@ class MTRDecoder(nn.Module):
             pred_list.append([pred_scores, pred_trajs])
 
             # update
-            pred_waypoints = pred_trajs[:, :, :, 0:2]
+            pred_waypoints = pred_trajs[:, :, :, 0:2]   # (num_center_objects, num_query, 80, 2)
             dynamic_query_center = pred_trajs[:, :, -1, 0:2].contiguous().permute(1, 0, 2)  # (num_query, num_center_objects, 2)
 
         if self.use_place_holder:
@@ -552,10 +552,10 @@ class MTRDecoder(nn.Module):
 
     # def forward(self, batch_dict):
     def forward(self, 
-                center_objects_type, 
-                center_objects_feature, 
-                obj_feature, obj_mask, obj_pos, 
-                map_feature, map_mask, map_pos):
+                center_objects_type, # (num_center_objects/bsz) 
+                center_objects_feature, # (num_center_objects/bsz, d_model)
+                obj_feature, obj_mask, obj_pos, # (bsz, num_objects, d_model), (bsz, num_objects), (bsz, num_objects, 3) 
+                map_feature, map_mask, map_pos):# (bsz, num_polylines, d_model), (bsz, num_polylines), (bsz, num_polylines, 3) 
         # input_dict = batch_dict['input_dict']
         # obj_feature, obj_mask, obj_pos = batch_dict['obj_feature'], batch_dict['obj_mask'], batch_dict['obj_pos']
         # map_feature, map_mask, map_pos = batch_dict['map_feature'], batch_dict['map_mask'], batch_dict['map_pos']
@@ -564,7 +564,7 @@ class MTRDecoder(nn.Module):
         num_polylines = map_feature.shape[1]
 
         # input projection
-        center_objects_feature = self.in_proj_center_obj(center_objects_feature)
+        center_objects_feature = self.in_proj_center_obj(center_objects_feature)    # (num_center_objects/bsz, d_model)
         obj_feature_valid = self.in_proj_obj(obj_feature[obj_mask])
         obj_feature = obj_feature.new_zeros(num_center_objects, num_objects, obj_feature_valid.shape[-1])
         obj_feature[obj_mask] = obj_feature_valid
@@ -573,7 +573,7 @@ class MTRDecoder(nn.Module):
         map_feature = map_feature.new_zeros(num_center_objects, num_polylines, map_feature_valid.shape[-1])
         map_feature[map_mask] = map_feature_valid
 
-        # dense future prediction
+        # dense future prediction (bsz, num_objects, d_model),  (bsz, num_objects, 80, 7)
         obj_feature, pred_dense_future_trajs = self.apply_dense_future_prediction(
             obj_feature=obj_feature, obj_mask=obj_mask, obj_pos=obj_pos
         )
@@ -593,7 +593,8 @@ class MTRDecoder(nn.Module):
             pred_scores, pred_trajs = self.generate_final_prediction(pred_list=pred_list)
             # batch_dict['pred_scores'] = pred_scores
             # batch_dict['pred_trajs'] = pred_trajs
-            return pred_scores, pred_trajs, pred_dense_future_trajs, intention_points
+            # return pred_scores, pred_trajs, pred_dense_future_trajs, intention_points
+            return pred_scores, pred_trajs
 
         # else:
             # self.forward_ret_dict['center_gt_trajs'] = input_dict['center_gt_trajs']

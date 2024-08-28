@@ -15,6 +15,77 @@ from mtr.utils import common_utils
 from pathlib import Path
 import matplotlib.pyplot as plt
 
+def visualize_new(input_dict, pred_scores, pred_trajs):
+    # root_dir = Path("/home/lotuspeak/code/auto/MTR/visualize/default-4")
+    root_dir = Path("/home/lotuspeak/code/auto/MTR/visualize/del_cuda")
+
+    root_dir.mkdir(parents=True, exist_ok=True)
+    pred_scores = pred_scores.cpu().numpy()
+    pred_trajs = pred_trajs.cpu().numpy()
+
+    scenario_id = input_dict['scenario_id']
+    obj_trajs = input_dict['obj_trajs'].cpu().numpy()
+    obj_trajs_mask = input_dict['obj_trajs_mask'].cpu().numpy()
+    obj_trajs_future_state = input_dict['obj_trajs_future_state'].cpu().numpy()
+    obj_trajs_future_mask = input_dict['obj_trajs_future_mask'].cpu().numpy()
+    obj_ids = input_dict['center_objects_id']
+    map_polylines = input_dict['map_polylines'].cpu().numpy()
+    map_polylines_mask = input_dict['map_polylines_mask'].cpu().numpy()
+    track_index_to_predict = input_dict['track_index_to_predict'].cpu().numpy()
+
+    batch_size = len(pred_scores)
+    for idx in range(batch_size):
+        file_name = root_dir / f"{scenario_id[idx]}_{obj_ids[idx]}.png"
+        cur_map_polylines = map_polylines[idx]
+        cur_map_polylines_mask = map_polylines_mask[idx]
+        cur_obj_trajs = obj_trajs[idx]
+        cur_obj_trajs_future = obj_trajs_future_state[idx]
+        cur_obj_trajs_future_mask = obj_trajs_future_mask[idx]
+        cur_obj_trajs_mask = obj_trajs_mask[idx]
+        center_obj_track_index = track_index_to_predict[idx]
+        plt.figure(figsize=(20,15))
+        # plt.scatter([-30,30],[-20,20], marker='+')
+        plt.xlim(-30, 120)
+        plt.ylim(-60, 60)
+        for pl_idx, pl in enumerate(cur_map_polylines):
+            if cur_map_polylines_mask[pl_idx].sum() <= 0:
+                continue
+            pl_mask = cur_map_polylines_mask[pl_idx]
+            xs = pl[pl_mask][:,0]
+            ys = pl[pl_mask][:,1]
+            plt.plot(xs,ys, marker='.', color = 'gray')
+
+        for traj_idx, traj in enumerate(cur_obj_trajs):
+            if traj_idx == center_obj_track_index:
+                continue
+            traj_mask = cur_obj_trajs_mask[traj_idx]
+            xs = traj[traj_mask][:,0]
+            ys = traj[traj_mask][:,1]
+            plt.plot(xs,ys, marker='.', color = 'yellow', linewidth=1.5)
+
+        ## history tgt green
+        center_traj = cur_obj_trajs[center_obj_track_index]
+        center_traj_mask = cur_obj_trajs_mask[center_obj_track_index]
+        xs = center_traj[center_traj_mask][:,0]
+        ys = center_traj[center_traj_mask][:,1]
+        plt.plot(xs,ys, marker='.', color = 'green', linewidth = 1.5) 
+
+        ## blue gt
+        center_traj_future = cur_obj_trajs_future[center_obj_track_index]
+        center_traj_future_mask = cur_obj_trajs_future_mask[center_obj_track_index].astype(bool)
+        xs = center_traj_future[center_traj_future_mask][:,0]
+        ys = center_traj_future[center_traj_future_mask][:,1]
+        plt.plot(xs,ys, marker='.', color = 'blue') 
+
+        ## red predict
+        cur_pred_trajs = pred_trajs[idx]
+        for pred_traj in cur_pred_trajs[:2]:
+            plt.plot(pred_traj[:,0],pred_traj[:,1], marker='.', color = 'red')
+            # break
+
+        plt.savefig(file_name)
+        plt.close()
+
 def visualize(batch_pred_dicts):
     root_dir = Path("/home/lotuspeak/code/auto/MTR/visualize/default-4")
     
@@ -113,11 +184,13 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     start_time = time.time()
 
     pred_dicts = []
+    visualize_batches = 0
     for i, batch_dict in enumerate(dataloader):
         with torch.no_grad():
             # batch_pred_dicts = model(batch_dict)
             input_dict = batch_dict['input_dict']
-            pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = \
+            # pred_scores, pred_trajs, pred_dense_future_trajs, intention_points = \
+            pred_scores, pred_trajs = \
                 model(input_dict['track_index_to_predict'],
                     input_dict['obj_trajs'], input_dict['obj_trajs_mask'],
                     input_dict['map_polylines'], input_dict['map_polylines_mask'],
@@ -125,7 +198,9 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
                     input_dict['center_objects_type'])
             final_pred_dicts = dataset.generate_prediction_dicts(batch_dict, pred_scores, pred_trajs, output_path=final_output_dir if save_to_file else None)
             pred_dicts += final_pred_dicts
-            # visualize(batch_pred_dicts)
+            if visualize_batches < 5:
+                visualize_new(input_dict, pred_scores, pred_trajs)
+                visualize_batches += 1
 
         disp_dict = {}
 

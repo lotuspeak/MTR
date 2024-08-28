@@ -72,14 +72,14 @@ class TransformerDecoderLayer(nn.Module):
     def with_pos_embed(self, tensor, pos: Optional[Tensor]):
         return tensor if pos is None else tensor + pos
 
-    def forward(self, tgt, memory,
+    def forward(self, tgt, memory, # (num_query, bsz/num_center_objects, C), (N/src_len, bsz/num_center_objects, C)
                 tgt_mask: Optional[Tensor] = None,
                 memory_mask: Optional[Tensor] = None,
-                pos: Optional[Tensor] = None,
-                query_pos: Optional[Tensor] = None,
-                query_sine_embed = None,
+                pos: Optional[Tensor] = None,   # (N/src_len, bsz/num_center_objects, C)  pos_enc(kv_pos)
+                query_pos: Optional[Tensor] = None, # (num_query, bsz/num_center_objects, C)   mlp(pos_enc) static intention query?
+                query_sine_embed = None, # (num_query, bsz/num_center_objects, C)  pos_enc(dynamic_query_center)  dynamic searching query?
                 is_first = False,
-                memory_key_padding_mask=None,
+                memory_key_padding_mask=None, # (N/src_len, bsz/num_center_objects)
                 # for local attn
                 key_batch_cnt=None,   # (B)
                 index_pair=None,  # (N1+N2..., K)
@@ -89,8 +89,8 @@ class TransformerDecoderLayer(nn.Module):
         """
 
         Args:
-            tgt (num_query, B, C):
-            memory (M1 + M2 + ..., C):
+            tgt (num_query, B, C):      # (num_query, bsz/num_center_objects, C)
+            memory (M1 + M2 + ..., C):  # (N/src_len, bsz/num_center_objects, C)
             pos (M1 + M2 + ..., C):
             query_pos (num_query, B, C):
             query_sine_embed (num_query, B, C):
@@ -105,7 +105,7 @@ class TransformerDecoderLayer(nn.Module):
             # Apply projections here
             # shape: num_queries x batch_size x 256
             q_content = self.sa_qcontent_proj(tgt)      # target is the input of the first decoder layer. zero by default.
-            q_pos = self.sa_qpos_proj(query_pos)
+            q_pos = self.sa_qpos_proj(query_pos)    # query_pos: static intention query, mlp(pos_enc)
             k_content = self.sa_kcontent_proj(tgt)
             k_pos = self.sa_kpos_proj(query_pos)
             v = self.sa_v_proj(tgt)
@@ -115,7 +115,7 @@ class TransformerDecoderLayer(nn.Module):
 
             q = q_content + q_pos
             k = k_content + k_pos
-
+            # (num_query, bsz/num_center_objects, C)
             tgt2 = self.self_attn(q, k, value=v, attn_mask=tgt_mask,
                                   key_padding_mask=None)[0]
             # ========== End of Self-Attention =============
@@ -154,9 +154,9 @@ class TransformerDecoderLayer(nn.Module):
             k_pos = pos.new_zeros(memory.shape[0], k_pos_valid.shape[-1])
             k_pos[memory_valid_mask] = k_pos_valid
         else:
-            k_content = self.ca_kcontent_proj(memory)
-            v = self.ca_v_proj(memory)
-            k_pos = self.ca_kpos_proj(pos)
+            k_content = self.ca_kcontent_proj(memory)   # (N/src_len, bsz/num_center_objects, C)
+            v = self.ca_v_proj(memory)                  # (N/src_len, bsz/num_center_objects, C)
+            k_pos = self.ca_kpos_proj(pos)  # pos: pos_enc(kv_pos) # (N/src_len, bsz/num_center_objects, C) -> (N/src_len, bsz/num_center_objects, C)
 
         # For the first decoder layer, we concatenate the positional embedding predicted from
         # the object query (the positional embedding) into the original query (key) in DETR.
@@ -168,7 +168,7 @@ class TransformerDecoderLayer(nn.Module):
             q = q_content
             k = k_content
 
-        query_sine_embed = self.ca_qpos_sine_proj(query_sine_embed)
+        query_sine_embed = self.ca_qpos_sine_proj(query_sine_embed) # linear(pos_enc(dynamic_query_center))
 
         if self.use_local_attn:
             num_q_all, n_model = q_content.shape
@@ -195,7 +195,7 @@ class TransformerDecoderLayer(nn.Module):
 
             q = q.view(num_queries, bs, self.nhead, n_model//self.nhead)
             query_sine_embed = query_sine_embed.view(num_queries, bs, self.nhead, n_model//self.nhead)
-            q = torch.cat([q, query_sine_embed], dim=3).view(num_queries, bs, n_model * 2)
+            q = torch.cat([q, query_sine_embed], dim=3).view(num_queries, bs, n_model * 2) # last dimension: [q0,q_pos0,q1,qpos1,...]
 
             k = k.view(hw, bs, self.nhead, n_model//self.nhead)
             k_pos = k_pos.view(hw, bs, self.nhead, n_model//self.nhead)
